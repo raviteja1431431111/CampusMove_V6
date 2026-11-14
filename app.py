@@ -19,7 +19,7 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=3),
 )
 csrf = CSRFProtect(app)
-DB = os.path.join(os.path.dirname(__file__), "database.db")
+DB = os.getenv("DB_PATH") or ("/tmp/campusmove.db" if os.getenv("VERCEL") else os.path.join(os.path.dirname(__file__), "database.db"))
 
 def connect():
     if "db" not in g:
@@ -520,6 +520,9 @@ def admin_change_bus_route(bus_id):
 def forbidden(_): return render_template("error.html",code=403,message="Your account does not have permission for this page."),403
 @app.errorhandler(404)
 def missing(_): return render_template("error.html",code=404,message="The requested page was not found."),404
+
+if os.getenv("VERCEL"):
+    init_db()
 
 if __name__=="__main__":
     init_db()
