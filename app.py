@@ -403,11 +403,40 @@ def parent_dashboard():
         child_data.append((child,latest))
     return render_template("parent.html",children=child_data,notifications=notes)
 
+@app.route("/parent/children")
+@role_required("parent")
+def parent_children():
+    db=connect()
+    children=db.execute("""SELECT s.* FROM students s JOIN parent_students ps ON ps.student_id=s.id
+                           WHERE ps.parent_id=? ORDER BY s.name""",(session["user_id"],)).fetchall()
+    child_data=[]
+    for child in children:
+        latest=db.execute("""SELECT a.*,r.route_name,r.bus_number FROM applications a
+                             JOIN routes r ON r.id=a.route_id
+                             WHERE a.student_id=? AND a.status='Approved'
+                             ORDER BY a.id DESC LIMIT 1""",(child["id"],)).fetchone()
+        child_data.append((child,latest))
+    return render_template("parent_children.html",children=child_data)
+
+@app.route("/parent/notifications")
+@role_required("parent")
+def parent_notifications():
+    db=connect()
+    notes=db.execute("""SELECT n.*,s.name AS student_name FROM notifications n
+                        JOIN students s ON s.id=n.student_id
+                        WHERE n.parent_id=? ORDER BY n.id DESC LIMIT 100""",
+                     (session["user_id"],)).fetchall()
+    unread=db.execute("SELECT COUNT(*) FROM notifications WHERE parent_id=? AND is_read=0",
+                      (session["user_id"],)).fetchone()[0]
+    return render_template("parent_notifications.html",notifications=notes,unread_count=unread)
+
 @app.route("/parent/notifications/read",methods=["POST"])
 @role_required("parent")
 def read_notifications():
     connect().execute("UPDATE notifications SET is_read=1 WHERE parent_id=?",(session["user_id"],))
-    connect().commit(); return redirect(url_for("parent_dashboard"))
+    connect().commit()
+    flash("All notifications marked as read.","success")
+    return redirect(url_for("parent_notifications"))
 
 @app.route("/driver")
 @role_required("driver")
