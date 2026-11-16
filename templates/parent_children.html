@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}My children · CampusMove{% endblock %}
+{% block content %}
+<div class="panel" style="margin-bottom:20px">
+  <div class="panel-head">
+    <div><span class="eyebrow">FAMILY ACCOUNT</span><h2>My children</h2><p class="muted">Students linked to your parent account and their approved transport details.</p></div>
+    <span class="count-chip">{{ children|length }} linked</span>
+  </div>
+  {% if children %}
+  <div class="child-grid">
+    {% for child, pass_info in children %}
+    <article class="child-card">
+      <div class="child-top">
+        <span class="child-avatar">{{ child.name[:1]|upper }}</span>
+        <div><b>{{ child.name }}</b><small>{{ child.student_id }}</small></div>
+      </div>
+      <div class="child-route">
+        <small>STUDENT DETAILS</small>
+        <b>{{ child.department or 'Department not provided' }}</b>
+        <span>{{ child.year or 'Year not provided' }} · {{ child.email }}</span>
+      </div>
+      {% if pass_info %}
+      <div class="child-route">
+        <small>APPROVED TRANSPORT</small>
+        <b>{{ pass_info.route_name }}</b>
+        <span>{{ pass_info.bus_number }} · Pickup: {{ pass_info.pickup_stop }}</span>
+      </div>
+      <span class="pill approved">Pass approved</span>
+      {% else %}
+      <div class="empty-state">No approved transport pass is available for this student yet.</div>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">No children are linked to this parent account yet. Ask the Super Admin to link your parent account using your registered email and the student's register number.</div>
+  {% endif %}
+</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+  <a class="secondary-button" href="/parent">Back to dashboard</a>
+  <a class="primary-button" href="/parent/notifications">View notifications</a>
+</div>
+{% endblock %}
