@@ -223,7 +223,21 @@ def init_db():
         driver = db.execute("SELECT id FROM drivers WHERE email=?",("driver01@campusmove.demo",)).fetchone()
         bus = db.execute("SELECT id FROM buses ORDER BY id LIMIT 1").fetchone()
         if student and parent:
+            # Keep a visible linked child and demo journey data for presentations.
             db.execute("INSERT OR IGNORE INTO parent_students(parent_id,student_id) VALUES(?,?)",(parent[0],student[0]))
+            approved = db.execute("SELECT id FROM applications WHERE student_id=? AND status='Approved' ORDER BY id DESC LIMIT 1",(student[0],)).fetchone()
+            demo_route = db.execute("SELECT id,stops FROM routes ORDER BY id LIMIT 1").fetchone()
+            if not approved and demo_route:
+                pickup = (demo_route[1] or "Campus").split(",")[0].strip() or "Campus"
+                db.execute("""INSERT INTO applications(student_id,route_id,pickup_stop,status,valid_until,qr_token)
+                              VALUES(?,?,?,'Approved',?,?)""",
+                           (student[0],demo_route[0],pickup,(date.today()+timedelta(days=180)).isoformat(),"CM-DEMO-"+secrets.token_urlsafe(18)))
+            note_count = db.execute("SELECT COUNT(*) FROM notifications WHERE parent_id=?",(parent[0],)).fetchone()[0]
+            if note_count == 0:
+                db.execute("""INSERT INTO notifications(parent_id,student_id,title,message)
+                              VALUES(?,?,?,?)""",
+                           (parent[0],student[0],"Demo journey update",
+                            "Your child is linked successfully. Boarding and alighting alerts will appear here when the driver records a journey event."))
         if driver and bus:
             db.execute("UPDATE buses SET driver_id=? WHERE id=? AND (driver_id IS NULL OR driver_id=?)",(driver[0],bus[0],driver[0]))
     db.commit(); db.close()
