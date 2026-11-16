@@ -50,9 +50,9 @@ class PGCursor:
         sql = sql.strip()
         if sql.upper().startswith("PRAGMA "):
             return self
-        ignore = bool(__import__("re").match(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", sql, __import__("re").I))
-        sql = __import__("re").sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
-        wants_id = bool(__import__("re").match(r"INSERT\\s+INTO\\s+routes\\b", sql, __import__("re").I))
+        ignore = bool(__import__("re").match(r"INSERT\s+OR\s+IGNORE\s+INTO", sql, __import__("re").I))
+        sql = __import__("re").sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
+        wants_id = bool(__import__("re").match(r"INSERT\s+INTO\s+routes\b", sql, __import__("re").I))
         sql = sql.replace("?", "%s")
         if ignore:
             sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
@@ -67,7 +67,7 @@ class PGCursor:
         sql = sql.strip()
         if sql.upper().startswith("PRAGMA "):
             return self
-        sql = __import__("re").sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
+        sql = __import__("re").sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
         ignore = "OR IGNORE" in sql.upper()
         sql = sql.replace("?", "%s")
         if ignore:
