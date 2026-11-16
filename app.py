@@ -620,13 +620,33 @@ def add_route():
         db.commit(); audit("route_added",name); flash("Route added.","success")
     return redirect(url_for("admin_routes_page"))
 
-@app.route("/superadmin")
-@role_required("super_admin")
-def superadmin_dashboard():
+def _render_superadmin_page(page):
     db=connect()
     metrics={t:db.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ["students","parents","drivers","admins","buses","routes","trips"]}
     logs=db.execute("SELECT * FROM audit_logs ORDER BY id DESC LIMIT 30").fetchall()
-    return render_template("superadmin.html",metrics=metrics,logs=logs)
+    templates={"dashboard":"superadmin_dashboard.html","accounts":"superadmin_accounts.html",
+               "links":"superadmin_links.html","logs":"superadmin_logs.html"}
+    return render_template(templates[page],metrics=metrics,logs=logs)
+
+@app.route("/superadmin")
+@role_required("super_admin")
+def superadmin_dashboard():
+    return _render_superadmin_page("dashboard")
+
+@app.route("/superadmin/accounts")
+@role_required("super_admin")
+def superadmin_accounts_page():
+    return _render_superadmin_page("accounts")
+
+@app.route("/superadmin/links")
+@role_required("super_admin")
+def superadmin_links_page():
+    return _render_superadmin_page("links")
+
+@app.route("/superadmin/logs")
+@role_required("super_admin")
+def superadmin_logs_page():
+    return _render_superadmin_page("logs")
 
 @app.route("/superadmin/create-user",methods=["POST"])
 @role_required("super_admin")
@@ -655,7 +675,7 @@ def link_parent():
             connect().execute("INSERT INTO parent_students(parent_id,student_id) VALUES(?,?)",(parent["id"],student["id"]))
             connect().commit(); audit("parent_student_linked",f.get("student_code")); flash("Parent linked to student.","success")
         except INTEGRITY_ERRORS: flash("This parent-child link already exists.","error")
-    return redirect(url_for("superadmin_dashboard"))
+    return redirect(url_for("superadmin_links_page"))
 
 
 @app.route("/admin/bus/add",methods=["POST"])
