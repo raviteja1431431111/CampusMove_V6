@@ -280,10 +280,11 @@ def disable_page_caching(response):
 def context():
     return {"current_user":session.get("name"),"current_role":session.get("role")}
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    # Serve the sign-in screen directly at the public URL. This avoids an
-    # unnecessary redirect and keeps the public entry point independent of DB queries.
+    # Support login form submissions from the public root URL as well as /login.
+    if request.method == "POST":
+        return login()
     if session.get("role"):
         return redirect(url_for(dashboard_endpoint(session["role"])))
     return render_template("login.html")
