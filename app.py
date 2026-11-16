@@ -91,6 +91,8 @@ class PGConnection:
     def executemany(self, sql, seq):
         return PGCursor(self.conn.cursor()).executemany(sql, seq)
     def executescript(self, script):
+        # Translate SQLite autoincrement keys for PostgreSQL.
+        script = script.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
         for statement in script.split(";"):
             statement = statement.strip()
             if statement: self.execute(statement)
@@ -122,57 +124,57 @@ def init_db():
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript("""
     CREATE TABLE IF NOT EXISTS students(
-      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, student_id TEXT NOT NULL UNIQUE, department TEXT, year TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS admins(
-      id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS parents(
-      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, phone TEXT);
     CREATE TABLE IF NOT EXISTS parent_students(
       parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
       student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
       PRIMARY KEY(parent_id,student_id));
     CREATE TABLE IF NOT EXISTS drivers(
-      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, phone TEXT, licence TEXT, active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS super_admins(
-      id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS routes(
-      id BIGSERIAL PRIMARY KEY, route_name TEXT NOT NULL, bus_number TEXT NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, route_name TEXT NOT NULL, bus_number TEXT NOT NULL,
       stops TEXT NOT NULL DEFAULT '', fee REAL NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS buses(
-      id BIGSERIAL PRIMARY KEY, bus_number TEXT UNIQUE NOT NULL, registration TEXT,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, bus_number TEXT UNIQUE NOT NULL, registration TEXT,
       capacity INTEGER, route_id INTEGER REFERENCES routes(id), driver_id INTEGER REFERENCES drivers(id));
     CREATE TABLE IF NOT EXISTS applications(
-      id BIGSERIAL PRIMARY KEY, student_id INTEGER NOT NULL REFERENCES students(id),
+      id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL REFERENCES students(id),
       route_id INTEGER NOT NULL REFERENCES routes(id), pickup_stop TEXT NOT NULL,
       applied_on TEXT DEFAULT CURRENT_TIMESTAMP, status TEXT DEFAULT 'Pending',
       valid_until TEXT, qr_token TEXT UNIQUE);
     CREATE TABLE IF NOT EXISTS stops(
-      id BIGSERIAL PRIMARY KEY, route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
       name TEXT NOT NULL, sequence INTEGER NOT NULL, latitude REAL, longitude REAL, UNIQUE(route_id,sequence));
     CREATE TABLE IF NOT EXISTS trips(
-      id BIGSERIAL PRIMARY KEY, bus_id INTEGER REFERENCES buses(id),
+      id INTEGER PRIMARY KEY AUTOINCREMENT, bus_id INTEGER REFERENCES buses(id),
       driver_id INTEGER REFERENCES drivers(id), route_id INTEGER REFERENCES routes(id),
       status TEXT DEFAULT 'Scheduled', started_at TEXT, ended_at TEXT);
     CREATE TABLE IF NOT EXISTS gps_locations(
-      id BIGSERIAL PRIMARY KEY, trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       latitude REAL NOT NULL, longitude REAL NOT NULL, speed REAL DEFAULT 0, heading REAL DEFAULT 0,
       recorded_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE INDEX IF NOT EXISTS idx_gps_trip_time ON gps_locations(trip_id,recorded_at);
     CREATE TABLE IF NOT EXISTS boarding_records(
-      id BIGSERIAL PRIMARY KEY, trip_id INTEGER NOT NULL REFERENCES trips(id),
+      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL REFERENCES trips(id),
       application_id INTEGER NOT NULL REFERENCES applications(id), student_id INTEGER NOT NULL REFERENCES students(id),
       stop_id INTEGER REFERENCES stops(id), event_type TEXT NOT NULL DEFAULT 'boarded',
       boarded_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(trip_id,student_id,event_type));
     CREATE TABLE IF NOT EXISTS notifications(
-      id BIGSERIAL PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
       student_id INTEGER NOT NULL REFERENCES students(id), title TEXT NOT NULL, message TEXT NOT NULL,
       is_read INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS audit_logs(
-      id BIGSERIAL PRIMARY KEY, actor_role TEXT, actor_id INTEGER, action TEXT,
+      id INTEGER PRIMARY KEY AUTOINCREMENT, actor_role TEXT, actor_id INTEGER, action TEXT,
       details TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     """)
     # Preserve existing records; seed only missing initial accounts/routes.
