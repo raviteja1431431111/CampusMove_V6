@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}Notifications · CampusMove{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <div><span class="eyebrow">JOURNEY ALERT CENTRE</span><h2>Notifications</h2><p class="muted">Boarding, alighting and transport updates for your linked children.</p></div>
+    <span class="count-chip">{{ unread_count }} unread</span>
+  </div>
+  {% if notifications %}
+    <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
+      <form method="post" action="/parent/notifications/read">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="small-button" type="submit">Mark all as read</button>
+      </form>
+    </div>
+    <div class="alert-list">
+      {% for n in notifications %}
+      <article class="alert-item {% if not n.is_read %}unread{% endif %}">
+        <i></i><div>
+          <b>{{ n.title }} · {{ n.student_name }}</b>
+          <p>{{ n.message }}</p>
+          <small>{{ n.created_at }} · {% if n.is_read %}Read{% else %}Unread{% endif %}</small>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">There are no journey notifications yet. When a driver records a boarding or alighting event for your child, the update will appear here.</div>
+  {% endif %}
+</section>
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+  <a class="secondary-button" href="/parent">Back to dashboard</a>
+  <a class="primary-button" href="/parent/children">View my children</a>
+</div>
+{% endblock %}
