@@ -282,16 +282,15 @@ def context():
 
 @app.route("/")
 def home():
+    # Serve the sign-in screen directly at the public URL. This avoids an
+    # unnecessary redirect and keeps the public entry point independent of DB queries.
     if session.get("role"):
         return redirect(url_for(dashboard_endpoint(session["role"])))
-    return redirect(url_for("login"))
-    db=connect()
-    stats=[db.execute("SELECT COUNT(*) FROM students").fetchone()[0],
-           db.execute("SELECT COUNT(*) FROM routes").fetchone()[0],
-           db.execute("SELECT COUNT(*) FROM buses").fetchone()[0],
-           db.execute("SELECT COUNT(*) FROM trips WHERE status='Active'").fetchone()[0]]
-    routes=db.execute("SELECT * FROM routes ORDER BY id").fetchall()
-    return render_template("home.html",stats=stats,routes=routes)
+    return render_template("login.html")
+
+@app.route("/healthz")
+def healthz():
+    return jsonify(status="ok", service="CampusMove"), 200
 
 @app.route("/login",methods=["GET","POST"])
 def login():
