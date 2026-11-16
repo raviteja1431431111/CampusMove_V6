@@ -120,8 +120,7 @@ def close_db(_=None):
     if db: db.close()
 
 def init_db():
-    db = sqlite3.connect(DB)
-    db.execute("PRAGMA foreign_keys=ON")
+    db = new_connection()
     db.executescript("""
     CREATE TABLE IF NOT EXISTS students(
       id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
@@ -623,9 +622,8 @@ def forbidden(_): return render_template("error.html",code=403,message="Your acc
 @app.errorhandler(404)
 def missing(_): return render_template("error.html",code=404,message="The requested page was not found."),404
 
-if os.getenv("VERCEL"):
-    init_db()
+# Initialize the configured database on Render, Vercel, and local startup.
+init_db()
 
 if __name__=="__main__":
-    init_db()
     app.run(host="127.0.0.1",port=5000,debug=False)
