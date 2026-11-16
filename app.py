@@ -685,7 +685,7 @@ def admin_assign_driver():
 def admin_change_bus_route(bus_id):
     route_id=request.form.get("route_id",type=int)
     if route_id and not connect().execute("SELECT 1 FROM routes WHERE id=?",(route_id,)).fetchone(): abort(404)
-    connect().execute("UPDATE buses SET route_id=? WHERE id=?",(route_id,bus_id)); connect().commit(); audit("bus_route_changed",str(bus_id)); flash("Bus route updated.","success"); return redirect(url_for("admin_dashboard")+"#fleet")
+    connect().execute("UPDATE buses SET route_id=? WHERE id=?",(route_id,bus_id)); connect().commit(); audit("bus_route_changed",str(bus_id)); flash("Bus route updated.","success"); return redirect(url_for("admin_fleet_page"))
 
 @app.errorhandler(403)
 def forbidden(_): return render_template("error.html",code=403,message="Your account does not have permission for this page."),403
