@@ -595,7 +595,7 @@ def review_application(aid,action):
                    ((date.today()+timedelta(days=180)).isoformat(),secrets.token_urlsafe(32),aid))
     else: db.execute("UPDATE applications SET status='Rejected',qr_token=NULL WHERE id=?",(aid,))
     db.commit(); audit("application_"+action,str(aid))
-    return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("admin_applications_page"))
 
 @app.route("/admin/route/add",methods=["POST"])
 @role_required("admin","super_admin")
@@ -609,7 +609,7 @@ def add_route():
         db.executemany("INSERT INTO stops(route_id,name,sequence) VALUES(?,?,?)",
           [(rid,s.strip(),i) for i,s in enumerate(stops.split(","),1) if s.strip()])
         db.commit(); audit("route_added",name); flash("Route added.","success")
-    return redirect(url_for("admin_dashboard"))
+    return redirect(url_for("admin_routes_page"))
 
 @app.route("/superadmin")
 @role_required("super_admin")
@@ -658,7 +658,7 @@ def admin_add_bus():
         try:
             connect().execute("INSERT INTO buses(bus_number,registration,capacity,route_id) VALUES(?,?,?,?)",(number,registration,capacity,route_id or None)); connect().commit(); audit("bus_created",number); flash("Bus added successfully.","success")
         except INTEGRITY_ERRORS: flash("That bus number already exists or the route is invalid.","error")
-    return redirect(url_for("admin_dashboard")+"#fleet")
+    return redirect(url_for("admin_fleet_page"))
 
 @app.route("/admin/driver/assign",methods=["POST"])
 @role_required("admin","super_admin")
