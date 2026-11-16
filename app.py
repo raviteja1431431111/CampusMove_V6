@@ -220,17 +220,9 @@ def logout():
 
 @app.route("/register",methods=["GET","POST"])
 def register():
-    if request.method=="POST":
-        f=request.form; name=f.get("name","").strip(); email=f.get("email","").strip().lower()
-        sid=f.get("student_id","").strip(); pw=f.get("password","")
-        if not all([name,email,sid,pw]) or len(pw)<8: flash("Complete all fields; password must be at least 8 characters.","error")
-        else:
-            try:
-                connect().execute("INSERT INTO students(name,email,password_hash,student_id,department,year) VALUES(?,?,?,?,?,?)",
-                    (name,email,generate_password_hash(pw),sid,f.get("department",""),f.get("year","")))
-                connect().commit(); flash("Student account created. Sign in now.","success"); return redirect(url_for("login"))
-            except sqlite3.IntegrityError: flash("Email or register number already exists.","error")
-    return render_template("register.html")
+    # Student accounts are created only by an authenticated transport administrator.
+    flash("Student self-registration is disabled. Contact the college transport administrator.","error")
+    return redirect(url_for("login"))
 
 @app.route("/profile", methods=["GET", "POST"])
 @role_required("student", "parent", "driver", "admin", "super_admin")
@@ -421,6 +413,30 @@ def admin_dashboard():
     buses=db.execute("SELECT b.*,r.route_name,d.name AS driver_name FROM buses b LEFT JOIN routes r ON r.id=b.route_id LEFT JOIN drivers d ON d.id=b.driver_id ORDER BY b.bus_number").fetchall()
     drivers=db.execute("SELECT id,name,email FROM drivers WHERE active=1 ORDER BY name").fetchall()
     return render_template("admin.html",applications=apps,routes=routes,counts=counts,buses=buses,drivers=drivers)
+
+@app.route("/admin/student/add",methods=["POST"])
+@role_required("admin","super_admin")
+def admin_add_student():
+    f=request.form
+    name=f.get("name","").strip()
+    email=f.get("email","").strip().lower()
+    student_code=f.get("student_id","").strip()
+    password=f.get("password","")
+    department=f.get("department","").strip()
+    year=f.get("year","").strip()
+    if not all([name,email,student_code,password]) or len(password)<8:
+        flash("Enter the student's name, email, register number and a password of at least 8 characters.","error")
+    else:
+        try:
+            connect().execute(
+                "INSERT INTO students(name,email,password_hash,student_id,department,year) VALUES(?,?,?,?,?,?)",
+                (name,email,generate_password_hash(password),student_code,department,year))
+            connect().commit()
+            audit("student_created_by_admin",f"{student_code}: {email}")
+            flash("Student account created successfully. Share the login details securely with the student.","success")
+        except sqlite3.IntegrityError:
+            flash("That student email or register number is already registered.","error")
+    return redirect(url_for("admin_dashboard")+"#students")
 
 @app.route("/admin/application/<int:aid>/<action>",methods=["POST"])
 @role_required("admin","super_admin")
