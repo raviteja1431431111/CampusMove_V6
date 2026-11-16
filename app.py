@@ -533,17 +533,23 @@ def _render_admin_workspace(focus_section=None):
     db=connect()
     apps=db.execute("""SELECT a.*,s.name,s.student_id,s.email,r.route_name,r.bus_number FROM applications a
       JOIN students s ON s.id=a.student_id JOIN routes r ON r.id=a.route_id ORDER BY a.id DESC""").fetchall()
+    students=db.execute("SELECT id,name,student_id,email,department,year,created_at FROM students ORDER BY name").fetchall()
     routes=db.execute("SELECT * FROM routes ORDER BY id DESC").fetchall()
     counts=[db.execute("SELECT COUNT(*) FROM students").fetchone()[0],db.execute("SELECT COUNT(*) FROM parents").fetchone()[0],
             db.execute("SELECT COUNT(*) FROM drivers").fetchone()[0],db.execute("SELECT COUNT(*) FROM buses").fetchone()[0]]
     buses=db.execute("SELECT b.*,r.route_name,d.name AS driver_name FROM buses b LEFT JOIN routes r ON r.id=b.route_id LEFT JOIN drivers d ON d.id=b.driver_id ORDER BY b.bus_number").fetchall()
     drivers=db.execute("SELECT id,name,email FROM drivers WHERE active=1 ORDER BY name").fetchall()
-    return render_template("admin.html",applications=apps,routes=routes,counts=counts,buses=buses,drivers=drivers,focus_section=focus_section)
+    return render_template("admin.html",applications=apps,students=students,routes=routes,counts=counts,buses=buses,drivers=drivers,focus_section=focus_section)
 
 @app.route("/admin")
 @role_required("admin","super_admin")
 def admin_dashboard():
     return _render_admin_workspace()
+
+@app.route("/admin/students")
+@role_required("admin","super_admin")
+def admin_students_page():
+    return _render_admin_workspace("students")
 
 @app.route("/admin/applications")
 @role_required("admin","super_admin")
@@ -582,7 +588,7 @@ def admin_add_student():
             flash("Student account created successfully. Share the login details securely with the student.","success")
         except INTEGRITY_ERRORS:
             flash("That student email or register number is already registered.","error")
-    return redirect(url_for("admin_dashboard")+"#students")
+    return redirect(url_for("admin_students_page"))
 
 @app.route("/admin/application/<int:aid>/<action>",methods=["POST"])
 @role_required("admin","super_admin")
@@ -669,7 +675,7 @@ def admin_assign_driver():
         cur=connect().execute("UPDATE buses SET driver_id=? WHERE id=?",(driver_id,bus_id)); connect().commit()
         if cur.rowcount: audit("driver_assigned",f"driver={driver_id}; bus={bus_id}"); flash("Driver assigned to bus.","success")
         else: flash("Bus not found.","error")
-    return redirect(url_for("admin_dashboard")+"#fleet")
+    return redirect(url_for("admin_fleet_page"))
 
 @app.route("/admin/bus/<int:bus_id>/route",methods=["POST"])
 @role_required("admin","super_admin")
