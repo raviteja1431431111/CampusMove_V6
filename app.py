@@ -268,6 +268,14 @@ def dashboard_endpoint(role):
     return {"student":"student_dashboard","parent":"parent_dashboard","admin":"admin_dashboard",
             "super_admin":"superadmin_dashboard","driver":"driver_dashboard"}[role]
 
+@app.after_request
+def disable_page_caching(response):
+    if request.path.startswith(("/admin", "/superadmin", "/parent", "/driver", "/student")):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 @app.context_processor
 def context():
     return {"current_user":session.get("name"),"current_role":session.get("role")}
