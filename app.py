@@ -662,7 +662,7 @@ def create_user():
             else: db.execute("INSERT INTO parents(name,email,password_hash) VALUES(?,?,?)",(name,identity,generate_password_hash(pw)))
             db.commit(); audit("account_created",f"{role}: {identity}"); flash(f"{role.title()} account created.","success")
         except INTEGRITY_ERRORS: flash("That username or email already exists.","error")
-    return redirect(url_for("superadmin_dashboard"))
+    return redirect(url_for("superadmin_accounts_page"))
 
 @app.route("/superadmin/link-parent",methods=["POST"])
 @role_required("super_admin")
