@@ -529,9 +529,7 @@ def active_trips():
       WHERE t.status='Active'""").fetchall()
     return jsonify([dict(x) for x in rows])
 
-@app.route("/admin")
-@role_required("admin","super_admin")
-def admin_dashboard():
+def _render_admin_workspace(focus_section=None):
     db=connect()
     apps=db.execute("""SELECT a.*,s.name,s.student_id,s.email,r.route_name,r.bus_number FROM applications a
       JOIN students s ON s.id=a.student_id JOIN routes r ON r.id=a.route_id ORDER BY a.id DESC""").fetchall()
@@ -540,7 +538,27 @@ def admin_dashboard():
             db.execute("SELECT COUNT(*) FROM drivers").fetchone()[0],db.execute("SELECT COUNT(*) FROM buses").fetchone()[0]]
     buses=db.execute("SELECT b.*,r.route_name,d.name AS driver_name FROM buses b LEFT JOIN routes r ON r.id=b.route_id LEFT JOIN drivers d ON d.id=b.driver_id ORDER BY b.bus_number").fetchall()
     drivers=db.execute("SELECT id,name,email FROM drivers WHERE active=1 ORDER BY name").fetchall()
-    return render_template("admin.html",applications=apps,routes=routes,counts=counts,buses=buses,drivers=drivers)
+    return render_template("admin.html",applications=apps,routes=routes,counts=counts,buses=buses,drivers=drivers,focus_section=focus_section)
+
+@app.route("/admin")
+@role_required("admin","super_admin")
+def admin_dashboard():
+    return _render_admin_workspace()
+
+@app.route("/admin/applications")
+@role_required("admin","super_admin")
+def admin_applications_page():
+    return _render_admin_workspace("applications")
+
+@app.route("/admin/routes")
+@role_required("admin","super_admin")
+def admin_routes_page():
+    return _render_admin_workspace("routes")
+
+@app.route("/admin/fleet")
+@role_required("admin","super_admin")
+def admin_fleet_page():
+    return _render_admin_workspace("fleet")
 
 @app.route("/admin/student/add",methods=["POST"])
 @role_required("admin","super_admin")
