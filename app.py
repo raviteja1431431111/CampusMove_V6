@@ -19,13 +19,97 @@ app.config.update(
     PERMANENT_SESSION_LIFETIME=timedelta(hours=3),
 )
 csrf = CSRFProtect(app)
+DB_URL = os.getenv("DATABASE_URL")
 DB = os.getenv("DB_PATH") or ("/tmp/campusmove.db" if os.getenv("VERCEL") else os.path.join(os.path.dirname(__file__), "database.db"))
+
+try:
+    import psycopg
+    from psycopg.rows import tuple_row
+    PG_INTEGRITY_ERROR = psycopg.IntegrityError
+except ImportError:
+    psycopg = None
+    PG_INTEGRITY_ERROR = sqlite3.IntegrityError
+
+INTEGRITY_ERRORS = (sqlite3.IntegrityError, PG_INTEGRITY_ERROR)
+
+class CompatRow(tuple):
+    def __new__(cls, values, names):
+        obj = super().__new__(cls, values)
+        obj.names = names
+        return obj
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            key = self.names.index(key)
+        return super().__getitem__(key)
+
+class PGCursor:
+    def __init__(self, cursor):
+        self.cursor = cursor
+        self.lastrowid = None
+    def execute(self, sql, params=()):
+        sql = sql.strip()
+        if sql.upper().startswith("PRAGMA "):
+            return self
+        ignore = bool(__import__("re").match(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", sql, __import__("re").I))
+        sql = __import__("re").sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
+        wants_id = bool(__import__("re").match(r"INSERT\\s+INTO\\s+routes\\b", sql, __import__("re").I))
+        sql = sql.replace("?", "%s")
+        if ignore:
+            sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        elif wants_id and "RETURNING" not in sql.upper():
+            sql = sql.rstrip().rstrip(";") + " RETURNING id"
+        self.cursor.execute(sql, params)
+        if wants_id and not ignore:
+            row = self.cursor.fetchone()
+            self.lastrowid = row[0] if row else None
+        return self
+    def executemany(self, sql, seq):
+        sql = sql.strip()
+        if sql.upper().startswith("PRAGMA "):
+            return self
+        sql = __import__("re").sub(r"INSERT\\s+OR\\s+IGNORE\\s+INTO", "INSERT INTO", sql, flags=__import__("re").I)
+        ignore = "OR IGNORE" in sql.upper()
+        sql = sql.replace("?", "%s")
+        if ignore:
+            sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+        self.cursor.executemany(sql, seq)
+        return self
+    def _row(self, row):
+        if row is None: return None
+        names = [d.name for d in self.cursor.description] if self.cursor.description else []
+        return CompatRow(row, names)
+    def fetchone(self): return self._row(self.cursor.fetchone())
+    def fetchall(self): return [self._row(r) for r in self.cursor.fetchall()]
+    @property
+    def rowcount(self): return self.cursor.rowcount
+
+class PGConnection:
+    def __init__(self, url):
+        self.conn = psycopg.connect(url, row_factory=tuple_row)
+    def execute(self, sql, params=()):
+        return PGCursor(self.conn.cursor()).execute(sql, params)
+    def executemany(self, sql, seq):
+        return PGCursor(self.conn.cursor()).executemany(sql, seq)
+    def executescript(self, script):
+        for statement in script.split(";"):
+            statement = statement.strip()
+            if statement: self.execute(statement)
+    def commit(self): self.conn.commit()
+    def close(self): self.conn.close()
+
+def new_connection():
+    if DB_URL:
+        if psycopg is None:
+            raise RuntimeError("Install psycopg[binary] to use PostgreSQL")
+        return PGConnection(DB_URL)
+    db = sqlite3.connect(DB)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA foreign_keys=ON")
+    return db
 
 def connect():
     if "db" not in g:
-        g.db = sqlite3.connect(DB)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys=ON")
+        g.db = new_connection()
     return g.db
 
 @app.teardown_appcontext
@@ -38,57 +122,57 @@ def init_db():
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript("""
     CREATE TABLE IF NOT EXISTS students(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, student_id TEXT NOT NULL UNIQUE, department TEXT, year TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS admins(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+      id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS parents(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, phone TEXT);
     CREATE TABLE IF NOT EXISTS parent_students(
       parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
       student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
       PRIMARY KEY(parent_id,student_id));
     CREATE TABLE IF NOT EXISTS drivers(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+      id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL, phone TEXT, licence TEXT, active INTEGER DEFAULT 1);
     CREATE TABLE IF NOT EXISTS super_admins(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+      id BIGSERIAL PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS routes(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, route_name TEXT NOT NULL, bus_number TEXT NOT NULL,
+      id BIGSERIAL PRIMARY KEY, route_name TEXT NOT NULL, bus_number TEXT NOT NULL,
       stops TEXT NOT NULL DEFAULT '', fee REAL NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS buses(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, bus_number TEXT UNIQUE NOT NULL, registration TEXT,
+      id BIGSERIAL PRIMARY KEY, bus_number TEXT UNIQUE NOT NULL, registration TEXT,
       capacity INTEGER, route_id INTEGER REFERENCES routes(id), driver_id INTEGER REFERENCES drivers(id));
     CREATE TABLE IF NOT EXISTS applications(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL REFERENCES students(id),
+      id BIGSERIAL PRIMARY KEY, student_id INTEGER NOT NULL REFERENCES students(id),
       route_id INTEGER NOT NULL REFERENCES routes(id), pickup_stop TEXT NOT NULL,
       applied_on TEXT DEFAULT CURRENT_TIMESTAMP, status TEXT DEFAULT 'Pending',
       valid_until TEXT, qr_token TEXT UNIQUE);
     CREATE TABLE IF NOT EXISTS stops(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+      id BIGSERIAL PRIMARY KEY, route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
       name TEXT NOT NULL, sequence INTEGER NOT NULL, latitude REAL, longitude REAL, UNIQUE(route_id,sequence));
     CREATE TABLE IF NOT EXISTS trips(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, bus_id INTEGER REFERENCES buses(id),
+      id BIGSERIAL PRIMARY KEY, bus_id INTEGER REFERENCES buses(id),
       driver_id INTEGER REFERENCES drivers(id), route_id INTEGER REFERENCES routes(id),
       status TEXT DEFAULT 'Scheduled', started_at TEXT, ended_at TEXT);
     CREATE TABLE IF NOT EXISTS gps_locations(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+      id BIGSERIAL PRIMARY KEY, trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
       latitude REAL NOT NULL, longitude REAL NOT NULL, speed REAL DEFAULT 0, heading REAL DEFAULT 0,
       recorded_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE INDEX IF NOT EXISTS idx_gps_trip_time ON gps_locations(trip_id,recorded_at);
     CREATE TABLE IF NOT EXISTS boarding_records(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, trip_id INTEGER NOT NULL REFERENCES trips(id),
+      id BIGSERIAL PRIMARY KEY, trip_id INTEGER NOT NULL REFERENCES trips(id),
       application_id INTEGER NOT NULL REFERENCES applications(id), student_id INTEGER NOT NULL REFERENCES students(id),
       stop_id INTEGER REFERENCES stops(id), event_type TEXT NOT NULL DEFAULT 'boarded',
       boarded_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(trip_id,student_id,event_type));
     CREATE TABLE IF NOT EXISTS notifications(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
+      id BIGSERIAL PRIMARY KEY, parent_id INTEGER NOT NULL REFERENCES parents(id) ON DELETE CASCADE,
       student_id INTEGER NOT NULL REFERENCES students(id), title TEXT NOT NULL, message TEXT NOT NULL,
       is_read INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS audit_logs(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, actor_role TEXT, actor_id INTEGER, action TEXT,
+      id BIGSERIAL PRIMARY KEY, actor_role TEXT, actor_id INTEGER, action TEXT,
       details TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
     """)
     # Preserve existing records; seed only missing initial accounts/routes.
@@ -388,7 +472,7 @@ def record_boarding():
                            f"{app_row['name']} {verb} on {app_row['route_name']} at {datetime.now().strftime('%d %b %Y, %I:%M %p')}.")
             audit("student_"+event,app_row["name"])
             flash(f"{app_row['name']} recorded: {event}. Parent notification created.","success")
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             flash(f"This {event} event has already been recorded for this student on this trip.","error")
     return redirect(url_for("driver_dashboard"))
 
@@ -434,7 +518,7 @@ def admin_add_student():
             connect().commit()
             audit("student_created_by_admin",f"{student_code}: {email}")
             flash("Student account created successfully. Share the login details securely with the student.","success")
-        except sqlite3.IntegrityError:
+        except INTEGRITY_ERRORS:
             flash("That student email or register number is already registered.","error")
     return redirect(url_for("admin_dashboard")+"#students")
 
@@ -486,7 +570,7 @@ def create_user():
             elif role=="driver": db.execute("INSERT INTO drivers(name,email,password_hash) VALUES(?,?,?)",(name,identity,generate_password_hash(pw)))
             else: db.execute("INSERT INTO parents(name,email,password_hash) VALUES(?,?,?)",(name,identity,generate_password_hash(pw)))
             db.commit(); audit("account_created",f"{role}: {identity}"); flash(f"{role.title()} account created.","success")
-        except sqlite3.IntegrityError: flash("That username or email already exists.","error")
+        except INTEGRITY_ERRORS: flash("That username or email already exists.","error")
     return redirect(url_for("superadmin_dashboard"))
 
 @app.route("/superadmin/link-parent",methods=["POST"])
@@ -499,7 +583,7 @@ def link_parent():
         try:
             connect().execute("INSERT INTO parent_students(parent_id,student_id) VALUES(?,?)",(parent["id"],student["id"]))
             connect().commit(); audit("parent_student_linked",f.get("student_code")); flash("Parent linked to student.","success")
-        except sqlite3.IntegrityError: flash("This parent-child link already exists.","error")
+        except INTEGRITY_ERRORS: flash("This parent-child link already exists.","error")
     return redirect(url_for("superadmin_dashboard"))
 
 
@@ -511,7 +595,7 @@ def admin_add_bus():
     else:
         try:
             connect().execute("INSERT INTO buses(bus_number,registration,capacity,route_id) VALUES(?,?,?,?)",(number,registration,capacity,route_id or None)); connect().commit(); audit("bus_created",number); flash("Bus added successfully.","success")
-        except sqlite3.IntegrityError: flash("That bus number already exists or the route is invalid.","error")
+        except INTEGRITY_ERRORS: flash("That bus number already exists or the route is invalid.","error")
     return redirect(url_for("admin_dashboard")+"#fleet")
 
 @app.route("/admin/driver/assign",methods=["POST"])
