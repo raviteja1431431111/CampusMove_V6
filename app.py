@@ -446,15 +446,31 @@ def read_notifications():
     flash("All notifications marked as read.","success")
     return redirect(url_for("parent_notifications"))
 
-@app.route("/driver")
-@role_required("driver")
-def driver_dashboard():
+def _driver_workspace_data():
     db=connect()
     bus=db.execute("""SELECT b.*,r.route_name,r.stops FROM buses b LEFT JOIN routes r ON r.id=b.route_id
                       WHERE b.driver_id=?""",(session["user_id"],)).fetchone()
     trip=db.execute("SELECT * FROM trips WHERE driver_id=? AND status='Active' ORDER BY id DESC LIMIT 1",
                     (session["user_id"],)).fetchone()
-    return render_template("driver.html",bus=bus,trip=trip)
+    return bus,trip
+
+@app.route("/driver")
+@role_required("driver")
+def driver_dashboard():
+    bus,trip=_driver_workspace_data()
+    return render_template("driver_dashboard.html",bus=bus,trip=trip)
+
+@app.route("/driver/trip")
+@role_required("driver")
+def driver_trip_page():
+    bus,trip=_driver_workspace_data()
+    return render_template("driver_trip.html",bus=bus,trip=trip)
+
+@app.route("/driver/boarding",methods=["GET"])
+@role_required("driver")
+def driver_boarding_page():
+    bus,trip=_driver_workspace_data()
+    return render_template("driver_boarding.html",bus=bus,trip=trip)
 
 @app.route("/driver/trip/start",methods=["POST"])
 @role_required("driver")
@@ -468,7 +484,7 @@ def start_trip():
                    (bus["id"],session["user_id"],bus["route_id"]))
         db.commit(); audit("trip_started",f"Bus {bus['bus_number']}")
         flash("Trip started. Allow location access to share GPS.","success")
-    return redirect(url_for("driver_dashboard"))
+    return redirect(url_for("driver_trip_page"))
 
 @app.route("/driver/trip/end",methods=["POST"])
 @role_required("driver")
@@ -476,7 +492,7 @@ def end_trip():
     db=connect()
     db.execute("UPDATE trips SET status='Completed',ended_at=CURRENT_TIMESTAMP WHERE driver_id=? AND status='Active'",(session["user_id"],))
     db.commit(); audit("trip_ended","Driver ended trip"); flash("Trip ended.","success")
-    return redirect(url_for("driver_dashboard"))
+    return redirect(url_for("driver_trip_page"))
 
 @app.route("/api/driver/location",methods=["POST"])
 @role_required("driver")
@@ -500,7 +516,7 @@ def record_boarding():
     event=f.get("event_type","boarded")
     if event not in ("boarded","alighted"):
         flash("Invalid boarding event.","error")
-        return redirect(url_for("driver_dashboard"))
+        return redirect(url_for("driver_trip_page"))
     # QR may contain the full public verification URL or just the opaque token.
     token=raw.rstrip("/").split("/")[-1]
     trip=db.execute("SELECT * FROM trips WHERE driver_id=? AND status='Active' ORDER BY id DESC LIMIT 1",
@@ -526,7 +542,7 @@ def record_boarding():
             flash(f"{app_row['name']} recorded: {event}. Parent notification created.","success")
         except INTEGRITY_ERRORS:
             flash(f"This {event} event has already been recorded for this student on this trip.","error")
-    return redirect(url_for("driver_dashboard"))
+    return redirect(url_for("driver_trip_page"))
 
 @app.route("/api/trips")
 @role_required("student","parent","admin","super_admin")
